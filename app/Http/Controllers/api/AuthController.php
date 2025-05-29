@@ -16,7 +16,9 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
+            'phone_number' => 'required|string|unique:users',
             'password' => 'required|string|min:8|confirmed',
+            'address' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -30,8 +32,11 @@ class AuthController extends Controller
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
+            'phone_number' => $request->phone_number,
             'password' => Hash::make($request->password),
-            'role' => 'user', // Default role
+            'role' => 'user',
+            'balance' => 0,
+            'address' => $request->address,
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -49,7 +54,7 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email' => 'required|string|email',
+            'login' => 'required|string',
             'password' => 'required|string',
         ]);
 
@@ -61,14 +66,21 @@ class AuthController extends Controller
             ], 422);
         }
 
-        if (!Auth::attempt($request->only('email', 'password'))) {
+        // Cek apakah login menggunakan email atau phone_number
+        $loginType = filter_var($request->login, FILTER_VALIDATE_EMAIL) ? 'email' : 'phone_number';
+        $credentials = [
+            $loginType => $request->login,
+            'password' => $request->password
+        ];
+
+        if (!Auth::attempt($credentials)) {
             return response()->json([
                 'status' => false,
-                'message' => 'Email atau password salah'
+                'message' => 'Email/No Telepon atau password salah'
             ], 401);
         }
 
-        $user = User::where('email', $request->email)->firstOrFail();
+        $user = User::where($loginType, $request->login)->firstOrFail();
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([

@@ -14,7 +14,7 @@ class TransactionDetail extends Model
         'category_id',
         'estimated_weight',
         'actual_weight',
-        'photo_path',
+        'photo_path'
     ];
 
     protected $casts = [

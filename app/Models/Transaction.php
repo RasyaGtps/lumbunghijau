@@ -15,7 +15,7 @@ class Transaction extends Model
         'total_weight',
         'total_price',
         'status',
-        'qr_code_path',
+        'qr_code_path'
     ];
 
     protected $casts = [
