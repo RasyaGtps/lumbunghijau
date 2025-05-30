@@ -17,7 +17,6 @@ use App\Http\Controllers\Api\TransactionController;
 |
 */
 
-// Auth routes
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
@@ -30,11 +29,18 @@ Route::prefix('auth')->group(function () {
     });
 });
 
-// Public routes
 Route::get('/waste-categories', [WasteCategoryController::class, 'index']);
 
-// Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/transactions', [TransactionController::class, 'store']);
     Route::get('/transactions/{id}', [TransactionController::class, 'show']);
+    
+    Route::middleware('role:collector,admin')->group(function () {
+        Route::post('/transactions/verify/{id}', [TransactionController::class, 'verify']);
+        Route::post('/transactions/verify/{id}/submit', [TransactionController::class, 'submitVerification']);
+    });
+
+    Route::middleware('role:admin')->group(function () {
+        Route::post('/transactions/{id}/admin-action', [TransactionController::class, 'adminAction']);
+    });
 });

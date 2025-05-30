@@ -19,6 +19,9 @@ return new class extends Migration
             $table->decimal('total_price', 10, 2);
             $table->enum('status', ['pending', 'verified', 'rejected'])->default('pending');
             $table->string('qr_code_path')->nullable();
+            $table->string('verification_token', 64)->nullable();
+            $table->timestamp('token_expires_at')->nullable();
+            $table->text('rejection_reason')->nullable();
             $table->timestamps();
         });
     }

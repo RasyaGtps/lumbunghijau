@@ -1,0 +1,351 @@
+{
+  "info": {
+    "name": "Lumbung Hijau",
+    "description": "",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Login",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "",
+        "url": {
+          "raw": "{{host}}/api/auth/login",
+          "protocol": "",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "login"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"login\": \"087812345678\",\n  \"password\": \"SitiR456@\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Register",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "",
+        "url": {
+          "raw": "{{host}}/api/auth/register",
+          "protocol": "",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "register"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"name\": \"Siti Rahayu\",\n    \"email\": \"siti.rahayu@yahoo.com\",\n    \"phone_number\": \"087812345678\",\n    \"password\": \"SitiR456@\",\n    \"password_confirmation\": \"SitiR456@\",\n    \"address\": \"Jl. Melati No. 15, Bandung\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Transaction",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": {
+            "key": "token",
+            "value": "5|8QL2wXqqsLnZUMdxaZ1SVyoES18oUlBvTVf7Su6Wddf20254",
+            "type": "string"
+          }
+        },
+        "description": "",
+        "url": {
+          "raw": "{{host}}/api/transactions",
+          "protocol": "",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "transactions"
+          ],
+          "query": [],
+          "variable": []
+        },
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "pickupLocation",
+              "value": "Jl. Sakura No. 20",
+              "disabled": false,
+              "type": "default"
+            },
+            {
+              "key": "categoryId",
+              "value": "1,2,3",
+              "disabled": false,
+              "type": "default"
+            },
+            {
+              "key": "estimatedWeight",
+              "value": "3.6,4.3,2.3",
+              "disabled": false,
+              "type": "default"
+            },
+            {
+              "key": "photo",
+              "value": [
+                "C:\\Users\\NB MSI\\Downloads\\Death stare☠️_ David Martinez.jpg"
+              ],
+              "disabled": false,
+              "type": "default"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "TransactionCheck",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": {
+            "key": "token",
+            "value": "5|8QL2wXqqsLnZUMdxaZ1SVyoES18oUlBvTVf7Su6Wddf20254",
+            "type": "string"
+          }
+        },
+        "description": "",
+        "url": {
+          "raw": "{{host}}/api/transactions/6",
+          "protocol": "",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "transactions",
+            "6"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "WasteCategories",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        },
+        "description": "",
+        "url": {
+          "raw": "{{host}}/api/waste-categories",
+          "protocol": "",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "waste-categories"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "VerifyRequest",
+          "event": [],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": {
+                "key": "token",
+                "value": "6|qZtMt5v9vaY2BfEU19L3gzYEwHws6ega5z9uGbuR3522a12b",
+                "type": "string"
+              }
+            },
+            "description": "",
+            "url": {
+              "raw": "{{host}}/api/transactions/verify/6/submit",
+              "protocol": "",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "api",
+                "transactions",
+                "verify",
+                "6",
+                "submit"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"sbZTn5SW5rpSpP8KP238UdrxHHhi6iaE\",\n  \"actualWeight\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "RegisterAdmin",
+          "event": [],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "",
+            "url": {
+              "raw": "{{host}}/api/auth/register",
+              "protocol": "",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Siti Rahayu\",\n    \"email\": \"admin@yahoo.com\",\n    \"phone_number\": \"4512\",\n    \"password\": \"admin1234\",\n    \"password_confirmation\": \"admin1234\",\n    \"address\": \"Jl. Melati No. 15, Bandung\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "LoginAdmin",
+          "event": [],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "",
+            "url": {
+              "raw": "{{host}}/api/auth/login",
+              "protocol": "",
+              "host": [
+                "{{host}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"login\": \"4512\",\n  \"password\": \"admin1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Logout",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": {
+            "key": "token",
+            "value": "4|6H96mzAzQEsKWu74qensiQtJQXp5DpGiE0L5t7q63f0ff29b",
+            "type": "string"
+          }
+        },
+        "description": "",
+        "url": {
+          "raw": "{{host}}/api/auth/logout",
+          "protocol": "",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "logout"
+          ],
+          "query": [],
+          "variable": []
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "host",
+      "value": "",
+      "type": "default"
+    }
+  ]
+}
