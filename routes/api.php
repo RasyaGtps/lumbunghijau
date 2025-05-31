@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\WasteCategoryController;
 use App\Http\Controllers\Api\TransactionController;
+use App\Http\Controllers\Api\UserController;
 
 /*
 |--------------------------------------------------------------------------
@@ -32,6 +33,8 @@ Route::prefix('auth')->group(function () {
 Route::get('/waste-categories', [WasteCategoryController::class, 'index']);
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/users/{id}', [UserController::class, 'show']);
+    
     Route::post('/transactions', [TransactionController::class, 'store']);
     Route::get('/transactions/{id}', [TransactionController::class, 'show']);
     

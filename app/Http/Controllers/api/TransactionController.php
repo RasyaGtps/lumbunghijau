@@ -234,8 +234,8 @@ class TransactionController extends Controller
     public function submitVerification(Request $request, $id)
     {
         $validator = Validator::make($request->all(), [
-            'actualWeight' => 'required|numeric|min:0.1',
-            'token' => 'required|string'
+            'token' => 'required|string',
+            'actualWeights' => 'required'
         ]);
 
         if ($validator->fails()) {
@@ -272,24 +272,71 @@ class TransactionController extends Controller
                 ], 400);
             }
 
-            $detail = $transaction->details->first();
-            $category = $detail->category;
-            $actualWeight = $request->actualWeight;
-            $totalPrice = $actualWeight * $category->price_per_kg;
+            $details = $transaction->details;
+            $actualWeights = [];
 
-            $detail->update([
-                'actual_weight' => $actualWeight
-            ]);
+            if (!is_array($request->actualWeights)) {
+                if (!is_numeric($request->actualWeights) || floatval($request->actualWeights) <= 0) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Berat harus berupa angka dan lebih dari 0'
+                    ], 422);
+                }
+                $actualWeights = array_fill(0, $details->count(), floatval($request->actualWeights));
+            } else {
+                foreach ($request->actualWeights as $weight) {
+                    if (!is_numeric($weight) || floatval($weight) <= 0) {
+                        return response()->json([
+                            'status' => false,
+                            'message' => 'Semua berat harus berupa angka dan lebih dari 0'
+                        ], 422);
+                    }
+                }
+                
+                foreach ($details as $index => $detail) {
+                    if (isset($request->actualWeights[$index])) {
+                        $actualWeights[$index] = floatval($request->actualWeights[$index]);
+                    } else {
+                        $actualWeights[$index] = $detail->actual_weight > 0 
+                            ? $detail->actual_weight 
+                            : $detail->estimated_weight;
+                    }
+                }
+            }
+
+            $totalWeight = 0;
+            $totalPrice = 0;
+            $weightDifferences = [];
+
+            foreach ($details as $index => $detail) {
+                $actualWeight = $actualWeights[$index];
+                $pricePerKg = $detail->category->price_per_kg;
+                
+                $detail->update([
+                    'actual_weight' => $actualWeight
+                ]);
+
+                $totalWeight += $actualWeight;
+                $totalPrice += $actualWeight * $pricePerKg;
+                
+                $weightDifferences[] = [
+                    'category' => $detail->category->name,
+                    'estimated' => $detail->estimated_weight,
+                    'actual' => $actualWeight,
+                    'difference' => $actualWeight - $detail->estimated_weight,
+                    'was_updated' => isset($request->actualWeights[$index]) || !is_array($request->actualWeights)
+                ];
+            }
 
             $transaction->update([
-                'total_weight' => $actualWeight,
+                'total_weight' => $totalWeight,
                 'total_price' => $totalPrice,
                 'verification_token' => null,
                 'token_expires_at' => null,
-                'status' => $actualWeight < self::AUTO_VERIFY_WEIGHT_LIMIT ? self::STATUS_VERIFIED : self::STATUS_PENDING
+                'status' => $totalWeight < self::AUTO_VERIFY_WEIGHT_LIMIT ? self::STATUS_VERIFIED : self::STATUS_PENDING
             ]);
 
-            if ($actualWeight < self::AUTO_VERIFY_WEIGHT_LIMIT) {
+            if ($totalWeight < self::AUTO_VERIFY_WEIGHT_LIMIT) {
                 $user = $transaction->user;
                 $user->update([
                     'balance' => $user->balance + $totalPrice
@@ -298,18 +345,9 @@ class TransactionController extends Controller
 
             DB::commit();
 
-            $weightDiff = abs($detail->estimated_weight - $actualWeight);
-            $message = $actualWeight < self::AUTO_VERIFY_WEIGHT_LIMIT 
+            $message = $totalWeight < self::AUTO_VERIFY_WEIGHT_LIMIT 
                 ? 'Verifikasi berhasil dan saldo telah ditambahkan' 
                 : 'Verifikasi berhasil, menunggu persetujuan admin karena berat melebihi 20kg';
-
-            if ($weightDiff > 0) {
-                $message .= sprintf(
-                    '. Terdapat perbedaan berat: estimasi %.2f kg, aktual %.2f kg',
-                    $detail->estimated_weight,
-                    $actualWeight
-                );
-            }
 
             $transaction->load(['details.category', 'user']);
 
@@ -318,10 +356,8 @@ class TransactionController extends Controller
                 'message' => $message,
                 'data' => [
                     'transaction' => $transaction,
-                    'transaction_detail' => $detail->fresh(),
-                    'weight_difference' => $weightDiff,
-                    'needs_admin_approval' => $actualWeight >= self::AUTO_VERIFY_WEIGHT_LIMIT,
-                    'price_difference' => $totalPrice - ($detail->estimated_weight * $category->price_per_kg),
+                    'weight_differences' => $weightDifferences,
+                    'needs_admin_approval' => $totalWeight >= self::AUTO_VERIFY_WEIGHT_LIMIT,
                     'verifier' => [
                         'name' => $request->user()->name,
                         'role' => $request->user()->role
