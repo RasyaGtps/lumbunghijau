@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Providers\Filament;
+namespace App\Providers\Filament\Dashboard;
 
 
 use Filament\Panel;

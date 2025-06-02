@@ -1,18 +1,36 @@
-<x-filament::page>
-    <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <x-filament::card>
-            <h2 class="text-xl font-semibold">Total Users</h2>
-            <p class="text-3xl">{{ $stats['users'] }}</p>
-        </x-filament::card>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.x/dist/tailwind.min.css" rel="stylesheet" />
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <nav class="bg-white shadow p-4 flex justify-between items-center">
+        <div class="text-xl font-bold">Dashboard</div>
+        <form method="POST" action="{{ route('logout') }}">
+            @csrf
+            <button type="submit" class="text-red-600 hover:underline">Logout</button>
+        </form>
+    </nav>
 
-        <x-filament::card>
-            <h2 class="text-xl font-semibold">Total Transactions</h2>
-            <p class="text-3xl">{{ $stats['transactions'] }}</p>
-        </x-filament::card>
+    <main class="p-6">
+        <h2 class="text-2xl font-semibold mb-4">Welcome, {{ auth()->user()->name }}!</h2>
 
-        <x-filament::card>
-            <h2 class="text-xl font-semibold">Waste Categories</h2>
-            <p class="text-3xl">{{ $stats['categories'] }}</p>
-        </x-filament::card>
-    </div>
-</x-filament::page>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-white p-4 rounded shadow">
+                <h3 class="text-lg font-semibold">Total Users</h3>
+                <p class="text-3xl">{{ \App\Models\User::count() }}</p>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h3 class="text-lg font-semibold">Total Transactions</h3>
+                <p class="text-3xl">{{ \App\Models\Transaction::count() }}</p>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+                <h3 class="text-lg font-semibold">Total Balance History</h3>
+                <p class="text-3xl">{{ \App\Models\BalanceHistory::count() }}</p>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

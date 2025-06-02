@@ -76,4 +76,9 @@ class User extends Authenticatable
     {
         return $this->role === 'admin';
     }
+
+public function canAccessFilament(): bool
+{
+    return $this->role === 'admin';
+}
 }
