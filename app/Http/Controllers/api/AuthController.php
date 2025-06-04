@@ -7,7 +7,9 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -19,6 +21,7 @@ class AuthController extends Controller
             'phone_number' => 'required|string|unique:users',
             'password' => 'required|string|min:8|confirmed',
             'address' => 'nullable|string',
+            'avatar' => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
         ]);
 
         if ($validator->fails()) {
@@ -29,7 +32,7 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $user = User::create([
+        $userData = [
             'name' => $request->name,
             'email' => $request->email,
             'phone_number' => $request->phone_number,
@@ -37,16 +40,44 @@ class AuthController extends Controller
             'role' => 'user',
             'balance' => 0,
             'address' => $request->address,
-        ]);
+        ];
 
+        $avatarPath = null;
+        if ($request->hasFile('avatar')) {
+            $file = $request->file('avatar');
+            $fileName = Str::slug($request->name) . '-' . Str::random(4) . '.' . $file->getClientOriginalExtension();
+            
+            if (!Storage::disk('public')->exists('avatars')) {
+                Storage::disk('public')->makeDirectory('avatars');
+            }
+            
+            // Upload file
+            $file->storeAs('public/avatars', $fileName);
+            $userData['avatar'] = $fileName;
+            $avatarPath = '/storage/avatars/' . $fileName;
+        }
+
+        $user = User::create($userData);
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
             'status' => true,
             'message' => 'Registrasi berhasil',
             'data' => [
-                'user' => $user,
-                'token' => $token
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone_number' => $user->phone_number,
+                    'role' => $user->role,
+                    'balance' => number_format($user->balance, 2, '.', ''),
+                    'address' => $user->address,
+                    'avatar' => $user->avatar,
+                    'avatar_path' => $avatarPath,
+                    'created_at' => $user->created_at
+                ],
+                'token' => $token,
+                'token_type' => 'Bearer'
             ]
         ], 201);
     }
@@ -83,12 +114,26 @@ class AuthController extends Controller
         $user = User::where($loginType, $request->login)->firstOrFail();
         $token = $user->createToken('auth_token')->plainTextToken;
 
+        $avatarPath = $user->avatar ? '/storage/avatars/' . $user->avatar : null;
+
         return response()->json([
             'status' => true,
             'message' => 'Login berhasil',
             'data' => [
-                'user' => $user,
-                'token' => $token
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone_number' => $user->phone_number,
+                    'role' => $user->role,
+                    'balance' => number_format($user->balance, 2, '.', ''),
+                    'address' => $user->address,
+                    'avatar' => $user->avatar,
+                    'avatar_path' => $avatarPath,
+                    'created_at' => $user->created_at
+                ],
+                'token' => $token,
+                'token_type' => 'Bearer'
             ]
         ], 200);
     }

@@ -34,6 +34,8 @@ Route::get('/waste-categories', [WasteCategoryController::class, 'index']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/users/{id}', [UserController::class, 'show']);
+    Route::get('/profile', [UserController::class, 'profile']);
+    Route::patch('/profile/update', [UserController::class, 'updateProfile']);
     
     Route::post('/transactions', [TransactionController::class, 'store']);
     Route::get('/transactions/{id}', [TransactionController::class, 'show']);

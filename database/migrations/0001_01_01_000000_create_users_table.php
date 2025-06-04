@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->string('phone_number');
             $table->string('password');
+            $table->string('avatar')->nullable();
             $table->enum('role', ['user', 'collector', 'admin'])->default('user');
             $table->decimal('balance', 10, 2)->default(0);
             $table->text('address')->nullable();
