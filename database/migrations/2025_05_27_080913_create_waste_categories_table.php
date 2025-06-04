@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('name');
             $table->enum('type', ['organic', 'inorganic']);
             $table->decimal('price_per_kg', 10, 2);
+            $table->string('image_path')->nullable();
             $table->timestamps();
         });
     }

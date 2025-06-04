@@ -20,7 +20,6 @@ return new class extends Migration
             $table->string('avatar')->nullable();
             $table->enum('role', ['user', 'collector', 'admin'])->default('user');
             $table->decimal('balance', 10, 2)->default(0);
-            $table->text('address')->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->rememberToken();
             $table->timestamps();

@@ -13,6 +13,7 @@ class WasteCategory extends Model
         'name',
         'type',
         'price_per_kg',
+        'image_path'
     ];
 
     protected $casts = [

@@ -7,6 +7,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 
 class UserController extends Controller
 {
@@ -26,7 +28,6 @@ class UserController extends Controller
                     'phone_number' => $user->phone_number,
                     'role' => $user->role,
                     'balance' => number_format($user->balance, 2, '.', ''),
-                    'address' => $user->address,
                     'avatar' => $user->avatar,
                     'avatar_path' => $avatarPath,
                     'created_at' => $user->created_at
@@ -39,12 +40,10 @@ class UserController extends Controller
     {
         $user = $request->user();
         
-        // Validasi data
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
             'email' => 'sometimes|required|email|max:255|unique:users,email,'.$user->id,
             'phone_number' => 'sometimes|required|string|max:20|unique:users,phone_number,'.$user->id,
-            'address' => 'sometimes|nullable|string',
             'avatar' => 'sometimes|nullable|string'
         ]);
         
@@ -84,16 +83,7 @@ class UserController extends Controller
 
     public function show($id)
     {
-        $user = User::find($id);
-        
-        if (!$user) {
-            return response()->json([
-                'status' => false,
-                'message' => 'User tidak ditemukan'
-            ], 404);
-        }
-
-        $avatarPath = $user->avatar ? '/storage/avatars/' . $user->avatar : null;
+        $user = User::findOrFail($id);
 
         return response()->json([
             'status' => true,
@@ -104,11 +94,71 @@ class UserController extends Controller
                     'email' => $user->email,
                     'phone_number' => $user->phone_number,
                     'role' => $user->role,
-                    'balance' => number_format($user->balance, 2, '.', ''),
-                    'address' => $user->address,
-                    'avatar' => $user->avatar,
-                    'avatar_path' => $avatarPath,
-                    'created_at' => $user->created_at
+                    'balance' => $user->balance,
+                    'avatar' => $user->avatar ? Storage::url($user->avatar) : null
+                ]
+            ]
+        ]);
+    }
+
+    public function update(Request $request)
+    {
+        $user = Auth::user();
+
+        $validator = Validator::make($request->all(), [
+            'name' => 'sometimes|required|string|max:255',
+            'email' => 'sometimes|required|string|email|max:255|unique:users,email,' . $user->id,
+            'phone_number' => 'sometimes|required|string|unique:users,phone_number,' . $user->id,
+            'avatar' => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $updateData = [];
+
+        if ($request->has('name')) {
+            $updateData['name'] = $request->name;
+        }
+
+        if ($request->has('email')) {
+            $updateData['email'] = $request->email;
+        }
+
+        if ($request->has('phone_number')) {
+            $updateData['phone_number'] = $request->phone_number;
+        }
+
+        if ($request->hasFile('avatar')) {
+            if ($user->avatar) {
+                Storage::disk('public')->delete($user->avatar);
+            }
+
+            $file = $request->file('avatar');
+            $fileName = time() . '_' . $file->getClientOriginalName();
+            $path = $file->storeAs('avatars', $fileName, 'public');
+            $updateData['avatar'] = $path;
+        }
+
+        $user->update($updateData);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Profil berhasil diperbarui',
+            'data' => [
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone_number' => $user->phone_number,
+                    'role' => $user->role,
+                    'balance' => $user->balance,
+                    'avatar' => $user->avatar ? Storage::url($user->avatar) : null
                 ]
             ]
         ]);

@@ -13,24 +13,22 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use chillerlan\QRCode\QRCode;
-use chillerlan\QRCode\QROptions;
 
 class TransactionController extends Controller
 {
+    const STATUS_CART = 'cart';
     const STATUS_PENDING = 'pending';
     const STATUS_VERIFIED = 'verified';
     const STATUS_REJECTED = 'rejected';
     const TOKEN_EXPIRY_HOURS = 24;
     const AUTO_VERIFY_WEIGHT_LIMIT = 20;
 
-    public function store(Request $request)
+    public function addToCart(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'pickupLocation' => 'required|string',
-            'categoryId' => 'required|string',
-            'estimatedWeight' => 'required|string',
-            'photo' => 'nullable|image|max:2048'
+        $validator = Validator::make($request->json()->all(), [
+            'categoryId' => 'required|exists:waste_categories,id',
+            'estimatedWeight' => 'required|numeric|min:0.01',
+            'pickupLocation' => 'nullable|string'
         ]);
 
         if ($validator->fails()) {
@@ -44,140 +42,238 @@ class TransactionController extends Controller
         try {
             DB::beginTransaction();
 
-            $categoryIds = array_map('trim', explode(',', $request->categoryId));
-            $weights = array_map('trim', explode(',', $request->estimatedWeight));
+            // Cari cart yang masih aktif
+            $cart = Transaction::where('user_id', Auth::id())
+                ->where('status', 'cart')
+                ->first();
 
-            if (count($categoryIds) !== count($weights)) {
+            // Jika tidak ada cart, buat baru
+            if (!$cart) {
+                $cart = Transaction::create([
+                    'user_id' => Auth::id(),
+                    'total_weight' => 0,
+                    'total_price' => 0,
+                    'status' => 'cart',
+                    'pickup_location' => $request->json('pickupLocation')
+                ]);
+            } else if ($request->json('pickupLocation')) {
+                // Update pickup location jika ada
+                $cart->pickup_location = $request->json('pickupLocation');
+                $cart->save();
+            }
+
+            $category = WasteCategory::find($request->json('categoryId'));
+            if (!$category) {
                 return response()->json([
                     'status' => false,
-                    'message' => 'Jumlah kategori dan berat harus sama'
-                ], 422);
+                    'message' => 'Kategori sampah tidak ditemukan'
+                ], 404);
             }
 
-            $totalWeight = 0;
-            $totalPrice = 0;
-            $items = [];
+            $weight = floatval($request->json('estimatedWeight'));
+            $price = $weight * $category->price_per_kg;
 
-            for ($i = 0; $i < count($categoryIds); $i++) {
-                $category = WasteCategory::find($categoryIds[$i]);
-                
-                if (!$category) {
-                    return response()->json([
-                        'status' => false,
-                        'message' => "Kategori dengan ID {$categoryIds[$i]} tidak ditemukan"
-                    ], 422);
-                }
-
-                $weight = floatval($weights[$i]);
-                if ($weight <= 0) {
-                    return response()->json([
-                        'status' => false,
-                        'message' => "Berat harus lebih dari 0"
-                    ], 422);
-                }
-
-                $totalWeight += $weight;
-                $totalPrice += $weight * $category->price_per_kg;
-                
-                $items[] = [
-                    'category' => $category,
-                    'weight' => $weight
-                ];
-            }
-            
-            $verificationToken = Str::random(32);
-            $tokenExpiresAt = now()->addHours(self::TOKEN_EXPIRY_HOURS);
-            $qrPath = 'qrcodes/tx-' . time() . '-' . uniqid() . '.png';
-
-            $transaction = Transaction::create([
-                'user_id' => Auth::id(),
-                'pickup_location' => $request->pickupLocation,
-                'total_weight' => $totalWeight,
-                'total_price' => $totalPrice,
-                'status' => self::STATUS_PENDING,
-                'qr_code_path' => $qrPath,
-                'verification_token' => $verificationToken,
-                'token_expires_at' => $tokenExpiresAt
+            // Buat detail transaksi
+            TransactionDetail::create([
+                'transaction_id' => $cart->id,
+                'category_id' => $category->id,
+                'estimated_weight' => $weight,
+                'photo_path' => null
             ]);
 
-            $photoPath = null;
+            // Update total di cart
+            $cart->update([
+                'total_weight' => $cart->total_weight + $weight,
+                'total_price' => $cart->total_price + $price
+            ]);
+
+            DB::commit();
+
+            // Load relationships dan format response
+            $cart->load('details.category');
+            
+            return response()->json([
+                'status' => true,
+                'message' => 'Item berhasil ditambahkan ke cart',
+                'data' => [
+                    'id' => $cart->id,
+                    'user_id' => $cart->user_id,
+                    'pickup_location' => $cart->pickup_location,
+                    'total_weight' => $cart->total_weight,
+                    'total_price' => $cart->total_price,
+                    'status' => $cart->status,
+                    'created_at' => $cart->created_at,
+                    'updated_at' => $cart->updated_at,
+                    'details' => $cart->details->map(function ($detail) {
+                        return [
+                            'id' => $detail->id,
+                            'transaction_id' => $detail->transaction_id,
+                            'category_id' => $detail->category_id,
+                            'estimated_weight' => $detail->estimated_weight,
+                            'actual_weight' => $detail->actual_weight,
+                            'photo_path' => $detail->photo_path,
+                            'created_at' => $detail->created_at,
+                            'updated_at' => $detail->updated_at,
+                            'category' => $detail->category
+                        ];
+                    })
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Error in addToCart: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            
+            return response()->json([
+                'status' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function submitCart(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'pickupLocation' => 'required|string',
+            'photo' => 'required|image|mimes:jpeg,png,jpg|max:2048'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $cart = Transaction::where('user_id', Auth::id())
+                ->where('status', 'cart')
+                ->first();
+
+            if (!$cart) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Cart tidak ditemukan'
+                ], 404);
+            }
+
+            if ($cart->details->isEmpty()) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Cart masih kosong'
+                ], 400);
+            }
+
+            // Upload foto
             if ($request->hasFile('photo')) {
                 $photo = $request->file('photo');
                 $filename = time() . '-' . uniqid() . '.' . $photo->getClientOriginalExtension();
                 $photoPath = $photo->storeAs('waste-photos', $filename, 'public');
+
+                // Update photo_path di semua detail transaksi
+                foreach ($cart->details as $detail) {
+                    $detail->update(['photo_path' => $photoPath]);
+                }
             }
 
-            foreach ($items as $item) {
-                TransactionDetail::create([
-                    'transaction_id' => $transaction->id,
-                    'category_id' => $item['category']->id,
-                    'estimated_weight' => $item['weight'],
-                    'photo_path' => $photoPath
-                ]);
-            }
+            // Generate token verifikasi
+            $verificationToken = Str::random(32);
+            $tokenExpiresAt = now()->addHours(self::TOKEN_EXPIRY_HOURS);
 
-            $qrData = [
-                'transaction_id' => $transaction->id,
-                'token' => $verificationToken,
-                'expires_at' => $tokenExpiresAt->toIso8601String(),
-                'verify_url' => url("/api/transactions/verify/{$transaction->id}")
-            ];
-
-            $options = new QROptions([
-                'outputType' => QRCode::OUTPUT_IMAGE_PNG,
-                'eccLevel' => QRCode::ECC_H,
-                'scale' => 5,
-                'imageBase64' => false,
+            // Update cart menjadi pending
+            $cart->update([
+                'pickup_location' => $request->pickupLocation,
+                'status' => self::STATUS_PENDING,
+                'verification_token' => $verificationToken,
+                'token_expires_at' => $tokenExpiresAt
             ]);
-
-            $qrcode = new QRCode($options);
-            
-            Storage::disk('public')->put(
-                $qrPath, 
-                $qrcode->render(json_encode($qrData))
-            );
 
             DB::commit();
 
-            $transaction->load('details.category');
+            // Load relationships dan format response
+            $cart->load('details.category');
 
             return response()->json([
                 'status' => true,
-                'message' => 'Transaksi berhasil dibuat',
+                'message' => 'Transaksi berhasil disubmit',
                 'data' => [
-                    'transaction' => $transaction,
-                    'qrCodePath' => Storage::url($qrPath),
-                    'photoPath' => $photoPath ? Storage::url($photoPath) : null,
-                    'tokenExpiresAt' => $tokenExpiresAt
+                    'id' => $cart->id,
+                    'user_id' => $cart->user_id,
+                    'pickup_location' => $cart->pickup_location,
+                    'total_weight' => $cart->total_weight,
+                    'total_price' => $cart->total_price,
+                    'status' => $cart->status,
+                    'verification_token' => $cart->verification_token,
+                    'token_expires_at' => $cart->token_expires_at,
+                    'created_at' => $cart->created_at,
+                    'updated_at' => $cart->updated_at,
+                    'details' => $cart->details->map(function ($detail) {
+                        return [
+                            'id' => $detail->id,
+                            'transaction_id' => $detail->transaction_id,
+                            'category_id' => $detail->category_id,
+                            'estimated_weight' => $detail->estimated_weight,
+                            'actual_weight' => $detail->actual_weight,
+                            'photo_path' => $detail->photo_path ? Storage::url($detail->photo_path) : null,
+                            'created_at' => $detail->created_at,
+                            'updated_at' => $detail->updated_at,
+                            'category' => $detail->category
+                        ];
+                    })
                 ]
-            ], 201);
+            ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
+            \Log::error('Error in submitCart: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            
             return response()->json([
                 'status' => false,
-                'message' => 'Terjadi kesalahan saat membuat transaksi'
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
             ], 500);
         }
     }
 
     public function show($id)
     {
-        $transaction = Transaction::with(['details.category'])
-            ->where('user_id', Auth::id())
-            ->findOrFail($id);
-
-        $transaction->details->transform(function ($detail) {
-            if ($detail->photo_path) {
-                $detail->photo_path = Storage::url($detail->photo_path);
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized'
+                ], 401);
             }
-            return $detail;
-        });
 
-        return response()->json([
-            'status' => true,
-            'data' => $transaction
-        ]);
+            $transaction = Transaction::with(['details.category'])
+                ->where('user_id', $user->id)
+                ->findOrFail($id);
+
+            // Transform photo_path to full URL
+            $transaction->details->transform(function ($detail) {
+                if ($detail->photo_path) {
+                    $detail->photo_path = Storage::url($detail->photo_path);
+                }
+                return $detail;
+            });
+
+            return response()->json([
+                'status' => true,
+                'data' => $transaction
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error in transaction show: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return response()->json([
+                'status' => false,
+                'message' => 'Transaksi tidak ditemukan'
+            ], 404);
+        }
     }
 
     public function verify(Request $request, $id)
@@ -448,6 +544,186 @@ class TransactionController extends Controller
             return response()->json([
                 'status' => false,
                 'message' => 'Terjadi kesalahan saat memproses persetujuan'
+            ], 500);
+        }
+    }
+
+    public function removeFromCart(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'detailId' => 'required|integer|exists:transaction_details,id'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            // Cari detail transaksi yang akan dihapus
+            $detail = TransactionDetail::with(['transaction', 'category'])
+                ->whereHas('transaction', function($query) {
+                    $query->where('user_id', Auth::id())
+                          ->where('status', 'cart');
+                })
+                ->find($request->detailId);
+
+            if (!$detail) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Item tidak ditemukan dalam cart'
+                ], 404);
+            }
+
+            $cart = $detail->transaction;
+            
+            // Hitung pengurangan total
+            $weightReduction = $detail->estimated_weight;
+            $priceReduction = $detail->estimated_weight * $detail->category->price_per_kg;
+
+            // Hapus detail
+            $detail->delete();
+
+            // Update total di cart
+            $cart->update([
+                'total_weight' => $cart->total_weight - $weightReduction,
+                'total_price' => $cart->total_price - $priceReduction
+            ]);
+
+            // Jika cart kosong, hapus cart
+            if ($cart->details()->count() === 0) {
+                $cart->delete();
+                
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Item terakhir berhasil dihapus, cart telah dikosongkan',
+                    'data' => null
+                ]);
+            }
+
+            // Load cart yang diperbarui
+            $cart->load('details.category');
+
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Item berhasil dihapus dari cart',
+                'data' => [
+                    'id' => $cart->id,
+                    'user_id' => $cart->user_id,
+                    'total_weight' => $cart->total_weight,
+                    'total_price' => $cart->total_price,
+                    'status' => $cart->status,
+                    'details' => $cart->details->map(function ($detail) {
+                        return [
+                            'id' => $detail->id,
+                            'transaction_id' => $detail->transaction_id,
+                            'category_id' => $detail->category_id,
+                            'estimated_weight' => $detail->estimated_weight,
+                            'category' => $detail->category
+                        ];
+                    })
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Error in removeFromCart: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            
+            return response()->json([
+                'status' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getCart()
+    {
+        try {
+            $cart = Transaction::with(['details.category'])
+                ->where('user_id', Auth::id())
+                ->where('status', self::STATUS_CART)
+                ->first();
+
+            if (!$cart) {
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Cart kosong',
+                    'data' => null
+                ]);
+            }
+
+            // Transform photo_path to full URL for each detail
+            $cart->details->transform(function ($detail) {
+                if ($detail->photo_path) {
+                    $detail->photo_path = Storage::url($detail->photo_path);
+                }
+                return $detail;
+            });
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Berhasil mengambil data cart',
+                'data' => $cart
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in getCart: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            
+            return response()->json([
+                'status' => false,
+                'message' => 'Terjadi kesalahan saat mengambil data cart'
+            ], 500);
+        }
+    }
+
+    public function index(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized'
+                ], 401);
+            }
+
+            $status = $request->query('status', 'pending');
+            \Log::info('Fetching transactions with status: ' . $status);
+
+            $query = Transaction::with(['details.category'])
+                ->where('user_id', $user->id)
+                ->where('status', '!=', 'cart');
+
+            if ($status === 'pending') {
+                $query->where('status', 'pending');
+            } else {
+                $query->whereIn('status', ['verified', 'rejected']);
+            }
+
+            $transactions = $query->orderBy('created_at', 'desc')->get();
+            
+            \Log::info('Found transactions: ' . $transactions->count());
+
+            return response()->json([
+                'status' => true,
+                'data' => $transactions
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error in transactions index: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            
+            return response()->json([
+                'status' => false,
+                'message' => 'Terjadi kesalahan saat mengambil data transaksi'
             ], 500);
         }
     }

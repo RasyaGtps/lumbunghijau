@@ -22,7 +22,7 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $this->call([
-            WasteCategorySeeder::class,
+            UserSeeder::class,
         ]);
     }
 }

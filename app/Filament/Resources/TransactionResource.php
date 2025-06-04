@@ -53,11 +53,6 @@ class TransactionResource extends Resource
                 ])
                 ->default('pending'),
 
-            Forms\Components\FileUpload::make('qr_code_path')
-                ->label('QR Code')
-                ->directory('transactions/qr-codes')
-                ->nullable(),
-
             Forms\Components\TextInput::make('verification_token')
                 ->label('Verification Token')
                 ->maxLength(255)
@@ -91,7 +86,6 @@ class TransactionResource extends Resource
                     'danger' => 'cancelled',
                 ])
                 ->sortable(),
-            Tables\Columns\ImageColumn::make('qr_code_path')->label('QR Code')->disk('public')->rounded(),
             Tables\Columns\TextColumn::make('created_at')->label('Created At')->dateTime()->sortable(),
         ])->filters([
             //

@@ -19,7 +19,7 @@ class TransactionDetail extends Model
 
     protected $casts = [
         'estimated_weight' => 'decimal:2',
-        'actual_weight' => 'decimal:2',
+        'actual_weight' => 'decimal:2'
     ];
 
     public function transaction()

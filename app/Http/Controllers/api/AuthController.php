@@ -18,10 +18,8 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
-            'phone_number' => 'required|string|unique:users',
-            'password' => 'required|string|min:8|confirmed',
-            'address' => 'nullable|string',
-            'avatar' => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
+            'password' => 'required|string|min:8',
+            'phone_number' => 'required|string|unique:users'
         ]);
 
         if ($validator->fails()) {
@@ -32,32 +30,15 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $userData = [
+        $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
-            'phone_number' => $request->phone_number,
             'password' => Hash::make($request->password),
+            'phone_number' => $request->phone_number,
             'role' => 'user',
-            'balance' => 0,
-            'address' => $request->address,
-        ];
+            'balance' => 0
+        ]);
 
-        $avatarPath = null;
-        if ($request->hasFile('avatar')) {
-            $file = $request->file('avatar');
-            $fileName = Str::slug($request->name) . '-' . Str::random(4) . '.' . $file->getClientOriginalExtension();
-            
-            if (!Storage::disk('public')->exists('avatars')) {
-                Storage::disk('public')->makeDirectory('avatars');
-            }
-            
-            // Upload file
-            $file->storeAs('public/avatars', $fileName);
-            $userData['avatar'] = $fileName;
-            $avatarPath = '/storage/avatars/' . $fileName;
-        }
-
-        $user = User::create($userData);
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -70,13 +51,10 @@ class AuthController extends Controller
                     'email' => $user->email,
                     'phone_number' => $user->phone_number,
                     'role' => $user->role,
-                    'balance' => number_format($user->balance, 2, '.', ''),
-                    'address' => $user->address,
-                    'avatar' => $user->avatar,
-                    'avatar_path' => $avatarPath,
-                    'created_at' => $user->created_at
+                    'balance' => $user->balance,
+                    'avatar' => $user->avatar ? Storage::url($user->avatar) : null
                 ],
-                'token' => $token,
+                'access_token' => $token,
                 'token_type' => 'Bearer'
             ]
         ], 201);
@@ -145,6 +123,26 @@ class AuthController extends Controller
         return response()->json([
             'status' => true,
             'message' => 'Logout berhasil'
+        ]);
+    }
+
+    public function me()
+    {
+        $user = Auth::user();
+
+        return response()->json([
+            'status' => true,
+            'data' => [
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone_number' => $user->phone_number,
+                    'role' => $user->role,
+                    'balance' => $user->balance,
+                    'avatar' => $user->avatar ? Storage::url($user->avatar) : null
+                ]
+            ]
         ]);
     }
 } 
