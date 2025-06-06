@@ -15,10 +15,17 @@ class AdminMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->user()->role !== 'admin') {
+        if (!auth()->check()) {
             return response()->json([
-                'status' => false,
-                'message' => 'Anda tidak memiliki akses untuk melakukan aksi ini'
+                'status' => 'error',
+                'message' => 'Unauthorized. Please login first.'
+            ], 401);
+        }
+
+        if (auth()->user()->role !== 'admin') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Access denied. Admin only.'
             ], 403);
         }
 

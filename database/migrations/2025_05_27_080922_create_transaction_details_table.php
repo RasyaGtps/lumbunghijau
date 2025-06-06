@@ -15,8 +15,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('transaction_id')->constrained()->onDelete('cascade');
             $table->foreignId('category_id')->constrained('waste_categories')->onDelete('cascade');
-            $table->decimal('estimated_weight', 8, 2);
-            $table->decimal('actual_weight', 8, 2)->nullable();
+            $table->integer('estimated_weight');
+            $table->integer('actual_weight')->nullable();
             $table->string('photo_path')->nullable();
             $table->timestamps();
         });

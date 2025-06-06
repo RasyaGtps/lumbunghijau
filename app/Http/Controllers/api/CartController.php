@@ -46,7 +46,7 @@ class CartController extends Controller
         try {
             $validator = Validator::make($request->all(), [
                 'categoryId' => 'required|exists:waste_categories,id',
-                'estimatedWeight' => 'required|numeric|min:0.1'
+                'estimatedWeight' => 'required|numeric|min:1'
             ]);
     
             if ($validator->fails()) {
@@ -65,17 +65,28 @@ class CartController extends Controller
                     'status' => 'cart'
                 ],
                 [
-                    'total_weight' => '0.00',
-                    'total_price' => '0.00'
+                    'total_weight' => 0,
+                    'total_price' => 0
                 ]
             );
 
-            // Tambah item ke cart
-            $detail = new TransactionDetail();
-            $detail->transaction_id = $cart->id;
-            $detail->category_id = $request->categoryId;
-            $detail->estimated_weight = (float) $request->estimatedWeight;
-            $detail->save();
+            // Cek apakah item dengan kategori yang sama sudah ada di cart
+            $existingDetail = TransactionDetail::where('transaction_id', $cart->id)
+                ->where('category_id', $request->categoryId)
+                ->first();
+
+            if ($existingDetail) {
+                // Jika item sudah ada, update beratnya
+                $existingDetail->estimated_weight = $existingDetail->estimated_weight + (int)$request->estimatedWeight;
+                $existingDetail->save();
+            } else {
+                // Jika item belum ada, buat baru
+                $detail = new TransactionDetail();
+                $detail->transaction_id = $cart->id;
+                $detail->category_id = $request->categoryId;
+                $detail->estimated_weight = (int)$request->estimatedWeight;
+                $detail->save();
+            }
 
             // Update total dan ambil data terbaru
             $this->updateCartTotal($cart->id);
@@ -374,6 +385,14 @@ class CartController extends Controller
                 $cart->status = 'pending';
                 $cart->pickup_location = $request->pickupLocation;
                 $cart->image_path = $filename;
+                
+                // Generate token verifikasi
+                $verificationToken = Str::random(32);
+                $tokenExpiresAt = now()->addHours(24); // 24 jam expiry time
+                
+                $cart->verification_token = $verificationToken;
+                $cart->token_expires_at = $tokenExpiresAt;
+                
                 $cart->save();
 
                 \Log::info('Cart updated successfully', [
@@ -420,11 +439,11 @@ class CartController extends Controller
         // Hitung total dari detail
         $totals = TransactionDetail::join('waste_categories', 'transaction_details.category_id', '=', 'waste_categories.id')
             ->where('transaction_id', $cartId)
-            ->selectRaw('CAST(SUM(estimated_weight) AS DECIMAL(8,2)) as total_weight, CAST(SUM(estimated_weight * price_per_kg) AS DECIMAL(10,2)) as total_price')
+            ->selectRaw('SUM(estimated_weight) as total_weight, CAST(SUM(estimated_weight * price_per_kg) AS DECIMAL(10,2)) as total_price')
             ->first();
 
-        $cart->total_weight = $totals->total_weight ?? '0.00';
-        $cart->total_price = $totals->total_price ?? '0.00';
+        $cart->total_weight = $totals->total_weight ?? 0;
+        $cart->total_price = $totals->total_price ?? 0;
         $cart->save();
     }
 } 

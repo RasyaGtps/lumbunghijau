@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->text('pickup_location')->nullable();
-            $table->decimal('total_weight', 8, 2);
+            $table->integer('total_weight');
             $table->decimal('total_price', 10, 2);
             $table->enum('status', ['cart', 'pending', 'verified', 'rejected'])->default('cart');
             $table->string('image_path')->nullable();

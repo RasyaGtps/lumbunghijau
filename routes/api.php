@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\WasteCategoryController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\WithdrawalController;
 
 /*
 |--------------------------------------------------------------------------
@@ -45,14 +46,25 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/cart/update-item', [CartController::class, 'updateCartItem']);
     Route::post('/cart/submit', [CartController::class, 'submit']);
     
-    // Transaction routes
-    Route::get('/transactions', [TransactionController::class, 'index']);
-    Route::get('/transactions/{id}', [TransactionController::class, 'show']);
+    // User transaction routes
+    Route::get('/transactions/user', [TransactionController::class, 'getUserTransactions']);
+    Route::get('/transactions/user/{id}', [TransactionController::class, 'getUserTransaction']);
     
+    // Collector/Admin transaction routes
     Route::middleware('role:collector,admin')->group(function () {
+        Route::get('/transactions/pending', [TransactionController::class, 'getPendingTransactions']);
+        Route::get('/transactions/search', [TransactionController::class, 'searchTransactions']);
+        Route::get('/transactions/{id}', [TransactionController::class, 'show']);
         Route::post('/transactions/verify/{id}', [TransactionController::class, 'verify']);
         Route::post('/transactions/verify/{id}/submit', [TransactionController::class, 'submitVerification']);
     });
+
+    // Withdrawal routes
+    Route::post('/withdrawals', [WithdrawalController::class, 'store']);
+    Route::get('/withdrawals', [WithdrawalController::class, 'index']);
+    Route::get('/withdrawals/{withdrawal}', [WithdrawalController::class, 'show']);
+    Route::post('/withdrawals/{id}/status', [WithdrawalController::class, 'updateStatus'])->middleware('admin');
+    Route::get('/withdrawals/check-expired', [WithdrawalController::class, 'checkExpiredWithdrawals'])->middleware('admin');
 
     // Admin routes
     Route::middleware('admin')->group(function () {

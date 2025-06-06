@@ -250,14 +250,27 @@ class TransactionController extends Controller
                 ], 401);
             }
 
-            $transaction = Transaction::with(['details.category'])
-                ->where('user_id', $user->id)
-                ->findOrFail($id);
+            $query = Transaction::with(['details.category', 'user']);
+
+            // Jika user biasa, hanya bisa lihat transaksinya sendiri
+            // Jika collector atau admin, bisa lihat semua transaksi
+            if (!in_array($user->role, ['collector', 'admin'])) {
+                $query->where('user_id', $user->id);
+            }
+
+            $transaction = $query->findOrFail($id);
 
             // Transform photo_path to full URL
+            if ($transaction->image_path) {
+                $transaction->image_path = Storage::url($transaction->image_path);
+            }
+            
             $transaction->details->transform(function ($detail) {
                 if ($detail->photo_path) {
                     $detail->photo_path = Storage::url($detail->photo_path);
+                }
+                if ($detail->category && $detail->category->image_path) {
+                    $detail->category->image_path = Storage::url($detail->category->image_path);
                 }
                 return $detail;
             });
@@ -725,6 +738,250 @@ class TransactionController extends Controller
                 'status' => false,
                 'message' => 'Terjadi kesalahan saat mengambil data transaksi'
             ], 500);
+        }
+    }
+
+    /**
+     * Get pending transactions (for collectors and admins)
+     */
+    public function getPendingTransactions()
+    {
+        try {
+            $user = Auth::user();
+            \Log::info('User attempting to access pending transactions:', [
+                'user_id' => $user->id,
+                'role' => $user->role
+            ]);
+
+            if (!$user || !in_array($user->role, ['collector', 'admin'])) {
+                \Log::warning('Unauthorized access attempt to pending transactions');
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized'
+                ], 401);
+            }
+
+            \Log::info('Fetching pending transactions for collector/admin');
+
+            $query = Transaction::with(['user', 'details.category'])
+                ->where('status', self::STATUS_PENDING)
+                ->orderBy('created_at', 'desc');
+
+            \Log::info('SQL Query:', [
+                'sql' => $query->toSql(),
+                'bindings' => $query->getBindings()
+            ]);
+
+            $transactions = $query->get();
+
+            \Log::info('Raw transactions found:', [
+                'count' => $transactions->count(),
+                'first_transaction' => $transactions->first()
+            ]);
+
+            // Transform photo_path to full URL for each detail
+            $transactions->transform(function ($transaction) {
+                if ($transaction->image_path) {
+                    $transaction->image_path = Storage::url($transaction->image_path);
+                }
+                $transaction->details->transform(function ($detail) {
+                    if ($detail->photo_path) {
+                        $detail->photo_path = Storage::url($detail->photo_path);
+                    }
+                    return $detail;
+                });
+                return $transaction;
+            });
+
+            \Log::info('Found pending transactions: ' . $transactions->count());
+
+            if ($transactions->isEmpty()) {
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Tidak ada transaksi pending',
+                    'data' => []
+                ]);
+            }
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Berhasil mengambil data transaksi pending',
+                'data' => $transactions
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in getPendingTransactions: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            
+            return response()->json([
+                'status' => false,
+                'message' => 'Terjadi kesalahan saat mengambil data transaksi: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Search transactions by user name
+     */
+    public function searchTransactions(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            \Log::info('User attempting to search transactions:', [
+                'user_id' => $user->id,
+                'role' => $user->role
+            ]);
+
+            if (!$user || !in_array($user->role, ['collector', 'admin'])) {
+                \Log::warning('Unauthorized access attempt to search transactions');
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized'
+                ], 401);
+            }
+
+            $query = $request->query('query');
+            \Log::info('Searching transactions with query: ' . $query);
+
+            $transactions = Transaction::with(['user', 'details.category'])
+                ->whereHas('user', function($q) use ($query) {
+                    $q->where('name', 'like', '%' . $query . '%');
+                })
+                ->where('status', self::STATUS_PENDING)
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            // Transform photo_path to full URL for each detail
+            $transactions->transform(function ($transaction) {
+                if ($transaction->image_path) {
+                    $transaction->image_path = Storage::url($transaction->image_path);
+                }
+                $transaction->details->transform(function ($detail) {
+                    if ($detail->photo_path) {
+                        $detail->photo_path = Storage::url($detail->photo_path);
+                    }
+                    return $detail;
+                });
+                return $transaction;
+            });
+
+            \Log::info('Found transactions: ' . $transactions->count());
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Berhasil mencari transaksi',
+                'data' => $transactions
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in searchTransactions: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            
+            return response()->json([
+                'status' => false,
+                'message' => 'Terjadi kesalahan saat mencari transaksi: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getUserTransactions()
+    {
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized'
+                ], 401);
+            }
+
+            \Log::info('Fetching transactions for user:', ['user_id' => $user->id]);
+
+            $transactions = Transaction::with(['details.category'])
+                ->where('user_id', $user->id)
+                ->where('status', '!=', 'cart')
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            // Transform photo paths to full URLs
+            $transactions->transform(function ($transaction) {
+                if ($transaction->image_path) {
+                    $transaction->image_path = Storage::url($transaction->image_path);
+                }
+                $transaction->details->transform(function ($detail) {
+                    if ($detail->photo_path) {
+                        $detail->photo_path = Storage::url($detail->photo_path);
+                    }
+                    if ($detail->category && $detail->category->image_path) {
+                        $detail->category->image_path = Storage::url($detail->category->image_path);
+                    }
+                    return $detail;
+                });
+                return $transaction;
+            });
+
+            \Log::info('Found transactions:', ['count' => $transactions->count()]);
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Berhasil mengambil data transaksi',
+                'data' => $transactions
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in getUserTransactions: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            
+            return response()->json([
+                'status' => false,
+                'message' => 'Terjadi kesalahan saat mengambil data transaksi'
+            ], 500);
+        }
+    }
+
+    public function getUserTransaction($id)
+    {
+        try {
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized'
+                ], 401);
+            }
+
+            $transaction = Transaction::with(['details.category'])
+                ->where('user_id', $user->id)
+                ->findOrFail($id);
+
+            // Transform photo paths to full URLs
+            if ($transaction->image_path) {
+                $transaction->image_path = Storage::url($transaction->image_path);
+            }
+            $transaction->details->transform(function ($detail) {
+                if ($detail->photo_path) {
+                    $detail->photo_path = Storage::url($detail->photo_path);
+                }
+                if ($detail->category && $detail->category->image_path) {
+                    $detail->category->image_path = Storage::url($detail->category->image_path);
+                }
+                return $detail;
+            });
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Berhasil mengambil detail transaksi',
+                'data' => $transaction
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in getUserTransaction: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            
+            return response()->json([
+                'status' => false,
+                'message' => 'Transaksi tidak ditemukan'
+            ], 404);
         }
     }
 }

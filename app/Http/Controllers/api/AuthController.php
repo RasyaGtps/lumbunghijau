@@ -105,7 +105,6 @@ class AuthController extends Controller
                     'phone_number' => $user->phone_number,
                     'role' => $user->role,
                     'balance' => number_format($user->balance, 2, '.', ''),
-                    'address' => $user->address,
                     'avatar' => $user->avatar,
                     'avatar_path' => $avatarPath,
                     'created_at' => $user->created_at
