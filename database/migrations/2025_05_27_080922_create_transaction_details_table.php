@@ -17,7 +17,6 @@ return new class extends Migration
             $table->foreignId('category_id')->constrained('waste_categories')->onDelete('cascade');
             $table->integer('estimated_weight');
             $table->integer('actual_weight')->nullable();
-            $table->string('photo_path')->nullable();
             $table->timestamps();
         });
     }

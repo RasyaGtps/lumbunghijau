@@ -18,8 +18,6 @@ class Transaction extends Model
         'total_price',
         'status',
         'image_path',
-        'verification_token',
-        'token_expires_at',
         'rejection_reason'
     ];
 
@@ -39,7 +37,7 @@ class Transaction extends Model
         return $this->hasMany(TransactionItem::class);
     }
 
-    public function details()
+    public function details(): HasMany
     {
         return $this->hasMany(TransactionDetail::class);
     }

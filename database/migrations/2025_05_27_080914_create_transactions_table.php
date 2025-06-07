@@ -14,13 +14,11 @@ return new class extends Migration
         Schema::create('transactions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->text('pickup_location')->nullable();
-            $table->integer('total_weight');
-            $table->decimal('total_price', 10, 2);
-            $table->enum('status', ['cart', 'pending', 'verified', 'rejected'])->default('cart');
+            $table->string('pickup_location')->nullable();
+            $table->decimal('total_weight', 10, 2)->nullable();
+            $table->decimal('total_price', 10, 2)->nullable();
             $table->string('image_path')->nullable();
-            $table->string('verification_token', 64)->nullable();
-            $table->timestamp('token_expires_at')->nullable();
+            $table->enum('status', ['cart', 'pending', 'verified', 'rejected'])->default('cart');
             $table->text('rejection_reason')->nullable();
             $table->timestamps();
         });

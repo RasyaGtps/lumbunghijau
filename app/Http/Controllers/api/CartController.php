@@ -28,7 +28,6 @@ class CartController extends Controller
                 'total_weight' => '0.00',
                 'total_price' => '0.00',
                 'pickup_location' => null,
-                'photo_path' => null,
                 'verification_token' => null,
                 'token_expires_at' => null,
                 'rejection_reason' => null
@@ -385,14 +384,6 @@ class CartController extends Controller
                 $cart->status = 'pending';
                 $cart->pickup_location = $request->pickupLocation;
                 $cart->image_path = $filename;
-                
-                // Generate token verifikasi
-                $verificationToken = Str::random(32);
-                $tokenExpiresAt = now()->addHours(24); // 24 jam expiry time
-                
-                $cart->verification_token = $verificationToken;
-                $cart->token_expires_at = $tokenExpiresAt;
-                
                 $cart->save();
 
                 \Log::info('Cart updated successfully', [

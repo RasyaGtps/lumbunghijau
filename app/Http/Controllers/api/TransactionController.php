@@ -7,6 +7,7 @@ use App\Models\Transaction;
 use App\Models\TransactionDetail;
 use App\Models\WasteCategory;
 use App\Models\User;
+use App\Models\BalanceHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -20,7 +21,6 @@ class TransactionController extends Controller
     const STATUS_PENDING = 'pending';
     const STATUS_VERIFIED = 'verified';
     const STATUS_REJECTED = 'rejected';
-    const TOKEN_EXPIRY_HOURS = 24;
     const AUTO_VERIFY_WEIGHT_LIMIT = 20;
 
     public function addToCart(Request $request)
@@ -180,16 +180,10 @@ class TransactionController extends Controller
                 }
             }
 
-            // Generate token verifikasi
-            $verificationToken = Str::random(32);
-            $tokenExpiresAt = now()->addHours(self::TOKEN_EXPIRY_HOURS);
-
             // Update cart menjadi pending
             $cart->update([
                 'pickup_location' => $request->pickupLocation,
-                'status' => self::STATUS_PENDING,
-                'verification_token' => $verificationToken,
-                'token_expires_at' => $tokenExpiresAt
+                'status' => self::STATUS_PENDING
             ]);
 
             DB::commit();
@@ -207,8 +201,6 @@ class TransactionController extends Controller
                     'total_weight' => $cart->total_weight,
                     'total_price' => $cart->total_price,
                     'status' => $cart->status,
-                    'verification_token' => $cart->verification_token,
-                    'token_expires_at' => $cart->token_expires_at,
                     'created_at' => $cart->created_at,
                     'updated_at' => $cart->updated_at,
                     'details' => $cart->details->map(function ($detail) {
@@ -289,61 +281,9 @@ class TransactionController extends Controller
         }
     }
 
-    public function verify(Request $request, $id)
-    {
-        $validator = Validator::make($request->all(), [
-            'token' => 'required|string'
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Token verifikasi tidak valid',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        $transaction = Transaction::with(['details.category', 'user'])
-            ->findOrFail($id);
-
-        if ($transaction->isTokenExpired()) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Token verifikasi sudah kadaluarsa'
-            ], 403);
-        }
-
-        if ($transaction->verification_token !== $request->token) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Token verifikasi tidak valid'
-            ], 403);
-        }
-
-        if ($transaction->status !== self::STATUS_PENDING) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Transaksi sudah diverifikasi atau ditolak'
-            ], 400);
-        }
-
-        return response()->json([
-            'status' => true,
-            'message' => 'Data transaksi valid',
-            'data' => [
-                'transaction' => $transaction,
-                'user' => [
-                    'name' => $transaction->user->name,
-                    'phone_number' => $transaction->user->phone_number
-                ]
-            ]
-        ]);
-    }
-
     public function submitVerification(Request $request, $id)
     {
         $validator = Validator::make($request->all(), [
-            'token' => 'required|string',
             'actualWeights' => 'required'
         ]);
 
@@ -359,20 +299,6 @@ class TransactionController extends Controller
             DB::beginTransaction();
 
             $transaction = Transaction::with(['details.category', 'user'])->findOrFail($id);
-            
-            if ($transaction->isTokenExpired()) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Token verifikasi sudah kadaluarsa'
-                ], 403);
-            }
-
-            if ($transaction->verification_token !== $request->token) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Token verifikasi tidak valid'
-                ], 403);
-            }
 
             if ($transaction->status !== self::STATUS_PENDING) {
                 return response()->json([
@@ -440,33 +366,32 @@ class TransactionController extends Controller
             $transaction->update([
                 'total_weight' => $totalWeight,
                 'total_price' => $totalPrice,
-                'verification_token' => null,
-                'token_expires_at' => null,
-                'status' => $totalWeight < self::AUTO_VERIFY_WEIGHT_LIMIT ? self::STATUS_VERIFIED : self::STATUS_PENDING
+                'status' => self::STATUS_VERIFIED
             ]);
 
-            if ($totalWeight < self::AUTO_VERIFY_WEIGHT_LIMIT) {
-                $user = $transaction->user;
-                $user->update([
-                    'balance' => $user->balance + $totalPrice
-                ]);
-            }
+            // Langsung tambahkan saldo untuk semua transaksi yang terverifikasi
+            $user = $transaction->user;
+            $user->update([
+                'balance' => $user->balance + $totalPrice
+            ]);
+
+            // Catat balance history
+            BalanceHistory::create([
+                'user_id' => $user->id,
+                'amount' => $totalPrice,
+                'transaction_id' => $transaction->id,
+                'timestamp' => now()
+            ]);
 
             DB::commit();
 
-            $message = $totalWeight < self::AUTO_VERIFY_WEIGHT_LIMIT 
-                ? 'Verifikasi berhasil dan saldo telah ditambahkan' 
-                : 'Verifikasi berhasil, menunggu persetujuan admin karena berat melebihi 20kg';
-
-            $transaction->load(['details.category', 'user']);
-
             return response()->json([
                 'status' => true,
-                'message' => $message,
+                'message' => 'Verifikasi berhasil dan saldo telah ditambahkan',
                 'data' => [
-                    'transaction' => $transaction,
+                    'transaction' => $transaction->fresh(['details.category', 'user']),
                     'weight_differences' => $weightDifferences,
-                    'needs_admin_approval' => $totalWeight >= self::AUTO_VERIFY_WEIGHT_LIMIT,
+                    'needs_admin_approval' => false,
                     'verifier' => [
                         'name' => $request->user()->name,
                         'role' => $request->user()->role
@@ -526,6 +451,14 @@ class TransactionController extends Controller
                 $user = $transaction->user;
                 $user->update([
                     'balance' => $user->balance + $transaction->total_price
+                ]);
+
+                // Catat balance history untuk transaksi yang disetujui admin
+                BalanceHistory::create([
+                    'user_id' => $user->id,
+                    'amount' => $transaction->total_price,
+                    'transaction_id' => $transaction->id,
+                    'timestamp' => now()
                 ]);
 
                 $message = 'Transaksi berhasil disetujui dan saldo telah ditambahkan';
@@ -954,7 +887,6 @@ class TransactionController extends Controller
                 ->where('user_id', $user->id)
                 ->findOrFail($id);
 
-            // Transform photo paths to full URLs
             if ($transaction->image_path) {
                 $transaction->image_path = Storage::url($transaction->image_path);
             }
