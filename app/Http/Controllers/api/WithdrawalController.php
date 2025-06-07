@@ -18,6 +18,14 @@ class WithdrawalController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
+        if ($withdrawals->isEmpty()) {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Tidak ada riwayat penarikan',
+                'data' => []
+            ]);
+        }
+
         return response()->json([
             'status' => 'success',
             'data' => $withdrawals
@@ -26,63 +34,104 @@ class WithdrawalController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'amount' => 'required|numeric|min:1'
-        ]);
-
-        $user = User::find(Auth::id());
-
-        // Cek apakah user sudah membuat request withdrawal hari ini
-        $todayRequest = Withdrawal::where('user_id', Auth::id())
-            ->whereDate('created_at', today())
-            ->where('status', 'pending')
-            ->first();
-
-        if ($todayRequest) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Anda sudah membuat permintaan penarikan hari ini. Silakan tunggu konfirmasi admin atau coba lagi besok.',
-                'data' => [
-                    'next_request_available' => today()->addDay()->format('Y-m-d H:i:s')
-                ]
-            ], 400);
-        }
-
-        if ($user->balance < $request->amount) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Saldo tidak mencukupi. Saldo Anda: Rp ' . number_format($user->balance, 0, ',', '.'),
-            ], 400);
-        }
-
         try {
-            DB::beginTransaction();
-
-            // Set expiration time to 24 hours from now
-            $withdrawal = Withdrawal::create([
-                'user_id' => Auth::id(),
-                'amount' => $request->amount,
-                'status' => 'pending',
-                'expires_at' => now()->addHours(24)
+            $request->validate([
+                'amount' => 'required|numeric|min:50000',
+                'method' => 'required|string',
+                'virtual_account' => 'required|string|min:10'
             ]);
 
-            DB::commit();
+            $user = User::find(Auth::id());
+            if (!$user) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User tidak ditemukan'
+                ], 404);
+            }
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Permintaan penarikan berhasil dibuat',
-                'data' => [
-                    'withdrawal' => $withdrawal,
-                    'saldo_tersisa' => $user->balance,
-                    'expires_at' => $withdrawal->expires_at
-                ]
-            ], 201);
+            // Cek apakah user sudah membuat request withdrawal hari ini
+            $todayRequest = Withdrawal::where('user_id', Auth::id())
+                ->whereDate('created_at', today())
+                ->where('status', 'pending')
+                ->first();
 
-        } catch (\Exception $e) {
-            DB::rollback();
+            if ($todayRequest) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Anda sudah membuat permintaan penarikan hari ini. Silakan tunggu konfirmasi admin atau coba lagi besok.',
+                    'data' => [
+                        'next_request_available' => today()->addDay()->format('Y-m-d H:i:s')
+                    ]
+                ], 400);
+            }
+
+            // Cek saldo minimal
+            if ($user->balance < 50000) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Saldo minimal untuk melakukan penarikan adalah Rp 50.000',
+                ], 400);
+            }
+
+            // Cek jumlah penarikan minimal
+            if ($request->amount < 50000) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Jumlah penarikan minimal adalah Rp 50.000',
+                ], 400);
+            }
+
+            if ($user->balance < $request->amount) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Saldo tidak mencukupi. Saldo Anda: Rp ' . number_format($user->balance, 0, ',', '.'),
+                ], 400);
+            }
+
+            DB::beginTransaction();
+
+            try {
+                // Set expiration time to 24 hours from now
+                $withdrawal = Withdrawal::create([
+                    'user_id' => Auth::id(),
+                    'amount' => $request->amount,
+                    'method' => $request->method,
+                    'virtual_account' => $request->virtual_account,
+                    'status' => 'pending',
+                    'expires_at' => now()->addHours(24)
+                ]);
+
+                DB::commit();
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Permintaan penarikan berhasil dibuat',
+                    'data' => [
+                        'withdrawal' => $withdrawal,
+                        'saldo_tersisa' => $user->balance,
+                        'expires_at' => $withdrawal->expires_at
+                    ]
+                ], 201);
+
+            } catch (\Exception $e) {
+                DB::rollback();
+                \Log::error('Error creating withdrawal: ' . $e->getMessage());
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Terjadi kesalahan saat membuat penarikan'
+                ], 500);
+            }
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Terjadi kesalahan saat memproses penarikan'
+                'message' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Unexpected error in withdrawal: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Terjadi kesalahan yang tidak diharapkan'
             ], 500);
         }
     }

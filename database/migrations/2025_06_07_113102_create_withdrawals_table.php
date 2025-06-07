@@ -11,11 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('withdrawls', function (Blueprint $table) {
+        Schema::create('withdrawals', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->decimal('amount', 10, 2);
-            $table->enum('status', ['pending', 'accepted', 'rejected', 'expired'])->default('pending');
+            $table->string('method');
+            $table->string('virtual_account')->nullable(false);
+            $table->enum('status', ['pending', 'accepted', 'rejected', 'expired']);
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
         });
@@ -26,6 +28,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('withdrawls');
+        Schema::dropIfExists('withdrawals');
     }
 };
