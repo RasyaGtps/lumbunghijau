@@ -53,6 +53,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Collector/Admin transaction routes
     Route::middleware('role:collector,admin')->group(function () {
         Route::get('/transactions/pending', [TransactionController::class, 'getPendingTransactions']);
+        Route::get('/transactions/verified', [TransactionController::class, 'getVerifiedTransactions']);
         Route::get('/transactions/search', [TransactionController::class, 'searchTransactions']);
         Route::post('/transactions/verify/{id}', [TransactionController::class, 'verify']);
         Route::post('/transactions/verify/{id}/submit', [TransactionController::class, 'submitVerification']);

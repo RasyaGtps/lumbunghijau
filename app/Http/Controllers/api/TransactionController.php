@@ -916,4 +916,25 @@ class TransactionController extends Controller
             ], 404);
         }
     }
+
+    public function getVerifiedTransactions()
+    {
+        try {
+            $transactions = Transaction::with(['user:id,name,avatar', 'details.category'])
+                ->where('status', 'verified')
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Berhasil mengambil data transaksi yang sudah diverifikasi',
+                'data' => $transactions
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Gagal mengambil data transaksi: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }
