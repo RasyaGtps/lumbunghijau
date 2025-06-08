@@ -107,6 +107,7 @@ class AuthController extends Controller
                     'balance' => number_format($user->balance, 2, '.', ''),
                     'avatar' => $user->avatar,
                     'avatar_path' => $avatarPath,
+                    'email_verified' => $user->email_verified,
                     'created_at' => $user->created_at
                 ],
                 'token' => $token,

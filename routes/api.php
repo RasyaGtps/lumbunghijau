@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\WithdrawalController;
+use App\Http\Controllers\Api\OTPController;
 
 /*
 |--------------------------------------------------------------------------
@@ -73,4 +74,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/waste-categories/{id}', [WasteCategoryController::class, 'update']);
         Route::delete('/waste-categories/{id}', [WasteCategoryController::class, 'destroy']);
     });
+
+    // OTP Routes
+    Route::post('/otp/send', [OTPController::class, 'sendOTP']);
+    Route::post('/otp/verify', [OTPController::class, 'verifyOTP']);
+    Route::post('/otp/resend', [OTPController::class, 'resendOTP']);
 });

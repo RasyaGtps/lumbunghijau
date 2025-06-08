@@ -23,9 +23,12 @@ class User extends Authenticatable
         'email',
         'password',
         'phone_number',
+        'avatar',
         'role',
         'balance',
-        'avatar',
+        'email_verified',
+        'otp_code',
+        'otp_expires_at'
     ];
 
     /**
@@ -36,6 +39,8 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'otp_code',
+        'otp_expires_at'
     ];
 
     /**
@@ -49,6 +54,8 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'balance' => 'decimal:2',
+            'email_verified' => 'boolean',
+            'otp_expires_at' => 'datetime',
         ];
     }
 
@@ -77,8 +84,8 @@ class User extends Authenticatable
         return $this->role === 'admin';
     }
 
-public function canAccessFilament(): bool
-{
-    return $this->role === 'admin';
-}
+    public function canAccessFilament(): bool
+    {
+        return $this->role === 'admin';
+    }
 }
