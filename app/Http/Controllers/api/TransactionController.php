@@ -283,11 +283,21 @@ class TransactionController extends Controller
 
     public function submitVerification(Request $request, $id)
     {
+        \Log::info('Received verification request:', [
+            'transaction_id' => $id,
+            'request_data' => $request->all()
+        ]);
+
         $validator = Validator::make($request->all(), [
-            'actualWeights' => 'required'
+            'actualWeights' => 'required|array',
+            'actualWeights.*.detail_id' => 'required|exists:transaction_details,id',
+            'actualWeights.*.actual_weight' => 'required|numeric|min:0.01'
         ]);
 
         if ($validator->fails()) {
+            \Log::warning('Validation failed:', [
+                'errors' => $validator->errors()->toArray()
+            ]);
             return response()->json([
                 'status' => false,
                 'message' => 'Validasi gagal',
@@ -299,54 +309,52 @@ class TransactionController extends Controller
             DB::beginTransaction();
 
             $transaction = Transaction::with(['details.category', 'user'])->findOrFail($id);
+            \Log::info('Found transaction:', [
+                'transaction' => $transaction->toArray()
+            ]);
 
             if ($transaction->status !== self::STATUS_PENDING) {
+                \Log::warning('Invalid transaction status:', [
+                    'current_status' => $transaction->status
+                ]);
                 return response()->json([
                     'status' => false,
                     'message' => 'Transaksi sudah diverifikasi atau ditolak'
                 ], 400);
             }
 
-            $details = $transaction->details;
-            $actualWeights = [];
-
-            if (!is_array($request->actualWeights)) {
-                if (!is_numeric($request->actualWeights) || floatval($request->actualWeights) <= 0) {
-                    return response()->json([
-                        'status' => false,
-                        'message' => 'Berat harus berupa angka dan lebih dari 0'
-                    ], 422);
-                }
-                $actualWeights = array_fill(0, $details->count(), floatval($request->actualWeights));
-            } else {
-                foreach ($request->actualWeights as $weight) {
-                    if (!is_numeric($weight) || floatval($weight) <= 0) {
-                        return response()->json([
-                            'status' => false,
-                            'message' => 'Semua berat harus berupa angka dan lebih dari 0'
-                        ], 422);
-                    }
-                }
-                
-                foreach ($details as $index => $detail) {
-                    if (isset($request->actualWeights[$index])) {
-                        $actualWeights[$index] = floatval($request->actualWeights[$index]);
-                    } else {
-                        $actualWeights[$index] = $detail->actual_weight > 0 
-                            ? $detail->actual_weight 
-                            : $detail->estimated_weight;
-                    }
-                }
-            }
-
             $totalWeight = 0;
             $totalPrice = 0;
             $weightDifferences = [];
 
-            foreach ($details as $index => $detail) {
-                $actualWeight = $actualWeights[$index];
-                $pricePerKg = $detail->category->price_per_kg;
+            // Verifikasi setiap detail transaksi
+            foreach ($request->actualWeights as $weightData) {
+                \Log::info('Processing weight data:', [
+                    'weight_data' => $weightData
+                ]);
+
+                $detail = $transaction->details->firstWhere('id', $weightData['detail_id']);
                 
+                if (!$detail) {
+                    \Log::warning('Detail not found:', [
+                        'detail_id' => $weightData['detail_id']
+                    ]);
+                    DB::rollBack();
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Detail transaksi tidak ditemukan'
+                    ], 404);
+                }
+
+                $actualWeight = floatval($weightData['actual_weight']);
+                $pricePerKg = floatval($detail->category->price_per_kg);
+                
+                \Log::info('Updating detail:', [
+                    'detail_id' => $detail->id,
+                    'actual_weight' => $actualWeight,
+                    'price_per_kg' => $pricePerKg
+                ]);
+
                 $detail->update([
                     'actual_weight' => $actualWeight
                 ]);
@@ -358,10 +366,14 @@ class TransactionController extends Controller
                     'category' => $detail->category->name,
                     'estimated' => $detail->estimated_weight,
                     'actual' => $actualWeight,
-                    'difference' => $actualWeight - $detail->estimated_weight,
-                    'was_updated' => isset($request->actualWeights[$index]) || !is_array($request->actualWeights)
+                    'difference' => $actualWeight - $detail->estimated_weight
                 ];
             }
+
+            \Log::info('Updating transaction:', [
+                'total_weight' => $totalWeight,
+                'total_price' => $totalPrice
+            ]);
 
             $transaction->update([
                 'total_weight' => $totalWeight,
@@ -371,8 +383,18 @@ class TransactionController extends Controller
 
             // Langsung tambahkan saldo untuk semua transaksi yang terverifikasi
             $user = $transaction->user;
+            $currentBalance = floatval($user->balance);
+            $newBalance = $currentBalance + $totalPrice;
+
+            \Log::info('Updating user balance:', [
+                'user_id' => $user->id,
+                'current_balance' => $currentBalance,
+                'total_price' => $totalPrice,
+                'new_balance' => $newBalance
+            ]);
+
             $user->update([
-                'balance' => $user->balance + $totalPrice
+                'balance' => $newBalance
             ]);
 
             // Catat balance history
@@ -384,6 +406,8 @@ class TransactionController extends Controller
             ]);
 
             DB::commit();
+
+            \Log::info('Verification completed successfully');
 
             return response()->json([
                 'status' => true,
@@ -401,9 +425,13 @@ class TransactionController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            \Log::error('Error in submitVerification: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            \Log::error('Request data:', $request->all());
+            
             return response()->json([
                 'status' => false,
-                'message' => 'Terjadi kesalahan saat memproses verifikasi'
+                'message' => 'Terjadi kesalahan saat memproses verifikasi: ' . $e->getMessage()
             ], 500);
         }
     }

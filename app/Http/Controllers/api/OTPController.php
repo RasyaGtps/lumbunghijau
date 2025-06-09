@@ -37,7 +37,8 @@ class OTPController extends Controller
                 'last_request_date' => null,
                 'request_count' => 0,
                 'resend_count' => 0,
-                'last_resend' => null
+                'last_resend' => null,
+                'timestamp' => Carbon::now()->toDateTimeString()
             ]);
 
             // Reset counter if it's a new day
@@ -182,8 +183,8 @@ class OTPController extends Controller
 
             // Update cache data
             $cacheData['resend_count']++;
-            $cacheData['last_resend'] = Carbon::now();
-            Cache::put($cacheKey, $cacheData, Carbon::parse($cacheData['timestamp'])->addDay());
+            $cacheData['last_resend'] = Carbon::now()->toDateTimeString();
+            Cache::put($cacheKey, $cacheData, Carbon::now()->addDay());
 
             // Send new OTP via email
             Mail::to($user->email)->send(new OTPMail($user, $otp));
