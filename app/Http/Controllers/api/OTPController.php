@@ -20,20 +20,40 @@ class OTPController extends Controller
     {
         try {
             $user = Auth::user();
-            $cacheKey = 'otp_request_' . $user->id;
             
-            // Check if user has requested OTP in the last 24 hours
-            if (Cache::has($cacheKey)) {
-                $lastRequest = Cache::get($cacheKey);
-                $nextAvailable = Carbon::parse($lastRequest)->addDay();
-                
-                if (Carbon::now()->lt($nextAvailable)) {
-                    $waitTime = Carbon::now()->diffInHours($nextAvailable);
-                    return response()->json([
-                        'message' => 'Anda harus menunggu ' . $waitTime . ' jam lagi sebelum meminta OTP baru',
-                        'next_available' => $nextAvailable
-                    ], 429);
-                }
+            // Check if user already has valid OTP
+            if ($user->otp_code && $user->otp_expires_at && Carbon::parse($user->otp_expires_at)->gt(Carbon::now())) {
+                return response()->json([
+                    'message' => 'Anda sudah memiliki OTP yang masih berlaku',
+                    'expires_at' => $user->otp_expires_at
+                ]);
+            }
+
+            $cacheKey = 'otp_request_' . $user->id;
+            $today = Carbon::now()->startOfDay();
+            
+            // Initialize or get cache data
+            $cacheData = Cache::get($cacheKey, [
+                'last_request_date' => null,
+                'request_count' => 0,
+                'resend_count' => 0,
+                'last_resend' => null
+            ]);
+
+            // Reset counter if it's a new day
+            if (!$cacheData['last_request_date'] || Carbon::parse($cacheData['last_request_date'])->startOfDay()->lt($today)) {
+                $cacheData['request_count'] = 0;
+            }
+            
+            // Check if user has exceeded daily limit (3 requests)
+            if ($cacheData['request_count'] >= 3) {
+                $nextAvailable = $today->copy()->addDay();
+                $waitHours = Carbon::now()->diffInHours($nextAvailable);
+                return response()->json([
+                    'message' => 'Anda telah mencapai batas maksimal permintaan OTP hari ini (3 kali). Silakan coba lagi besok.',
+                    'next_available' => $nextAvailable,
+                    'wait_hours' => $waitHours
+                ], 429);
             }
             
             // Generate 6 digit OTP
@@ -44,13 +64,13 @@ class OTPController extends Controller
             $user->otp_expires_at = now()->addMinutes(10); // OTP valid for 10 minutes
             $user->save();
 
-            // Store request timestamp and initialize resend count in cache
-            $cacheData = [
-                'timestamp' => Carbon::now(),
-                'resend_count' => 0,
-                'last_resend' => null
-            ];
-            Cache::put($cacheKey, $cacheData, Carbon::now()->addDay());
+            // Increment request count and update cache
+            $cacheData['request_count']++;
+            $cacheData['last_request_date'] = Carbon::now()->toDateTimeString();
+            $cacheData['resend_count'] = 0;
+            $cacheData['last_resend'] = null;
+            
+            Cache::put($cacheKey, $cacheData, $today->copy()->addDays(2)); // Keep for 2 days to handle timezone edge cases
 
             // Send OTP via email
             Mail::to($user->email)->send(new OTPMail($user, $otp));
@@ -58,8 +78,8 @@ class OTPController extends Controller
             return response()->json([
                 'message' => 'OTP telah dikirim ke email Anda',
                 'expires_at' => $user->otp_expires_at,
-                'next_available_request' => Carbon::now()->addDay(),
-                'remaining_resend' => 3
+                'remaining_requests_today' => 3 - $cacheData['request_count'],
+                'next_available_request' => $today->copy()->addDay()
             ]);
         } catch (\Exception $e) {
             return response()->json([
