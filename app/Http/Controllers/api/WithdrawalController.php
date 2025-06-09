@@ -266,4 +266,27 @@ class WithdrawalController extends Controller
             ], 500);
         }
     }
+
+    public function getSuccessfulWithdrawals()
+    {
+        try {
+            $withdrawals = Withdrawal::where('user_id', Auth::id())
+                ->where('status', 'accepted')
+                ->orderBy('updated_at', 'desc')
+                ->get();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Berhasil mengambil data penarikan',
+                'data' => $withdrawals->toArray()
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error in getSuccessfulWithdrawals: ' . $e->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'Terjadi kesalahan saat mengambil data penarikan',
+                'data' => []
+            ], 500);
+        }
+    }
 } 

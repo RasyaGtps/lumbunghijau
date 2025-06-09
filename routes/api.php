@@ -63,9 +63,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Withdrawal routes
     Route::post('/withdrawals', [WithdrawalController::class, 'store']);
     Route::get('/withdrawals', [WithdrawalController::class, 'index']);
+    Route::get('/withdrawals/success', [WithdrawalController::class, 'getSuccessfulWithdrawals']);
+    Route::get('/withdrawals/check-expired', [WithdrawalController::class, 'checkExpiredWithdrawals'])->middleware('admin');
     Route::get('/withdrawals/{withdrawal}', [WithdrawalController::class, 'show']);
     Route::post('/withdrawals/{id}/status', [WithdrawalController::class, 'updateStatus'])->middleware('admin');
-    Route::get('/withdrawals/check-expired', [WithdrawalController::class, 'checkExpiredWithdrawals'])->middleware('admin');
 
     // Admin routes
     Route::middleware('admin')->group(function () {
