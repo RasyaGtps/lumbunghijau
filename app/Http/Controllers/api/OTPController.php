@@ -22,7 +22,7 @@ class OTPController extends Controller
             $user = Auth::user();
             
             // Check if user already has valid OTP
-            if ($user->otp_code && $user->otp_expires_at && Carbon::parse($user->otp_expires_at)->gt(Carbon::now())) {
+            if ($user->otp_code && $user->otp_expires_at && Carbon::parse($user->otp_expires_at instanceof \DateTime ? $user->otp_expires_at->format('Y-m-d H:i:s') : $user->otp_expires_at)->gt(Carbon::now())) {
                 return response()->json([
                     'message' => 'Anda sudah memiliki OTP yang masih berlaku',
                     'expires_at' => $user->otp_expires_at
@@ -42,7 +42,7 @@ class OTPController extends Controller
             ]);
 
             // Reset counter if it's a new day
-            if (!$cacheData['last_request_date'] || Carbon::parse($cacheData['last_request_date'])->startOfDay()->lt($today)) {
+            if (!$cacheData['last_request_date'] || Carbon::parse($cacheData['last_request_date'] instanceof \DateTime ? $cacheData['last_request_date']->format('Y-m-d H:i:s') : $cacheData['last_request_date'])->startOfDay()->lt($today)) {
                 $cacheData['request_count'] = 0;
             }
             
