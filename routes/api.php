@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\WithdrawalController;
 use App\Http\Controllers\Api\OTPController;
+use App\Http\Controllers\Api\ArticleController;
+use App\Http\Controllers\Api\LoginController;
 
 /*
 |--------------------------------------------------------------------------
@@ -81,3 +83,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/otp/verify', [OTPController::class, 'verifyOTP']);
     Route::post('/otp/resend', [OTPController::class, 'resendOTP']);
 });
+
+// Article routes
+Route::get('articles', [ArticleController::class, 'index']);
+Route::get('articles/{article}', [ArticleController::class, 'show']);
+
+Route::post('/login', [LoginController::class, 'login']);
+Route::get('/admin/{id}', [LoginController::class, 'getAdminData']);

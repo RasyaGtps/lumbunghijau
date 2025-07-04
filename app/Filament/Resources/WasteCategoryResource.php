@@ -12,8 +12,8 @@ use Filament\Tables;
 class WasteCategoryResource extends Resource
 {
     protected static ?string $model = WasteCategory::class;
+    protected static ?string $navigationIcon = 'heroicon-o-folder';
 
-    protected static ?string $navigationIcon = 'heroicon-o-archive';
 
     public static function form(Forms\Form $form): Forms\Form
     {
@@ -45,11 +45,14 @@ class WasteCategoryResource extends Resource
             Tables\Columns\TextColumn::make('id')->sortable(),
             Tables\Columns\TextColumn::make('name')->sortable()->searchable(),
             Tables\Columns\BadgeColumn::make('type')
-                ->enum([
-                    'organic' => 'Organic',
-                    'inorganic' => 'Inorganic',
-                    'hazardous' => 'Hazardous',
-                ])
+                ->state(function ($record): string {
+                    return match ($record->type) {
+                        'organic' => 'Organic',
+                        'inorganic' => 'Inorganic',
+                        'hazardous' => 'Hazardous',
+                        default => $record->type,
+                    };
+                })
                 ->colors([
                     'success' => 'organic',
                     'warning' => 'inorganic',
