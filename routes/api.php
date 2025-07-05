@@ -90,3 +90,13 @@ Route::get('articles/{article}', [ArticleController::class, 'show']);
 
 Route::post('/login', [LoginController::class, 'login']);
 Route::get('/admin/{id}', [LoginController::class, 'getAdminData']);
+
+
+use Illuminate\Support\Facades\Cache;
+
+Route::get('/test-redis-cache', function () {
+    $value = Cache::remember('my_data', 60, function () {
+        return 'Data dari Redis!';
+    });
+    return $value;
+});

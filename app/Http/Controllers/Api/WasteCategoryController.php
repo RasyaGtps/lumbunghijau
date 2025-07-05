@@ -7,12 +7,19 @@ use App\Models\WasteCategory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Cache;
 
 class WasteCategoryController extends Controller
 {
+
+    const CACHE_KEY_ALL_CATEGORIES = 'waste_categories.all';
+
     public function index()
     {
-        $categories = WasteCategory::all();
+
+        $categories = Cache::remember(self::CACHE_KEY_ALL_CATEGORIES, 60, function () {
+            return WasteCategory::all();
+        });
 
         return response()->json([
             'status' => true,
@@ -50,6 +57,9 @@ class WasteCategoryController extends Controller
                 'price_per_kg' => $request->price_per_kg,
                 'image_path' => $path
             ]);
+
+            // Hapus cache setelah data baru ditambahkan
+            Cache::forget(self::CACHE_KEY_ALL_CATEGORIES);
 
             return response()->json([
                 'status' => true,
@@ -120,6 +130,9 @@ class WasteCategoryController extends Controller
 
             $category->update($updateData);
 
+            // Hapus cache setelah data diupdate
+            Cache::forget(self::CACHE_KEY_ALL_CATEGORIES);
+
             return response()->json([
                 'status' => true,
                 'message' => 'Kategori sampah berhasil diupdate',
@@ -153,6 +166,9 @@ class WasteCategoryController extends Controller
             }
 
             $category->delete();
+
+            // Hapus cache setelah data dihapus
+            Cache::forget(self::CACHE_KEY_ALL_CATEGORIES);
 
             return response()->json([
                 'status' => true,
